@@ -808,4 +808,213 @@ UpdateCamera:
 .keep:  mov ax, [cam]
 .out:   pop bp
         ret 2
+; ===========================================================================
+; MODULES 9, 10, 12, 13 : hero movement, collision, blocks, score
+; Position and velocity use 8.8 fixed point. The world position keeps the
+; whole pixels in a word (mx, my) and the fraction in a byte (mxf, myf).
+; ===========================================================================
 
+; AddScore(points) : 32 bit ADD/ADC, clamped to 999,999 (0x000F423F)
+AddScore:
+        push bp
+        mov bp, sp
+        push ax
+        push dx
+        mov ax, [score_lo]
+        mov dx, [score_hi]
+        add ax, [bp+4]
+        adc dx, 0
+        cmp dx, 0x0F
+        ja  .clamp
+        jb  .ok
+        cmp ax, 0x423F
+        jbe .ok
+.clamp: mov dx, 0x0F
+        mov ax, 0x423F
+.ok:    mov [score_lo], ax
+        mov [score_hi], dx
+        pop dx
+        pop ax
+        pop bp
+        ret 2
+
+; AddLife : lives + 1 (never above 99)
+AddLife:
+        cmp word [lives], 99
+        jae .r
+        inc word [lives]
+.r:     ret
+
+; AddCoin : coins + 1; every 100 coins give a life and the counter restarts
+AddCoin:
+        inc word [coins]
+        cmp word [coins], 100
+        jb  .r
+        mov word [coins], 0
+        call AddLife
+.r:     ret
+
+; HurtHero : enemy contact. Super -> Small + blinking, Small -> death
+HurtHero:
+        cmp word [invuln], 0
+        jne .r
+        cmp byte [hp], 2
+        jne .die
+        mov byte [hp], 1
+        mov byte [form], 0
+        mov word [hh], 16
+        add word [my], 16        ; feet stay fixed: top = feet - 16
+        mov word [invuln], 60    ; about 2 seconds
+        ret
+.die:   call KillHero
+.r:     ret
+
+; KillHero : start the DYING state (pit deaths skip the upward hop)
+KillHero:
+        mov byte [hp], 0
+        mov word [state], ST_DYING
+        mov word [dtimer], 0
+        mov word [vx], 0
+        mov word [invuln], 0     ; no blinking while dying
+        mov word [vy], DEATHV
+        cmp word [my], 192
+        jl  .ok
+        mov word [vy], 0
+.ok:    mov byte [myf], 0
+        ret
+
+; GrowHero : mushroom while Small. Feet stay fixed: top = feet - 32
+GrowHero:
+        cmp byte [hp], 2
+        je  .r
+        mov byte [hp], 2
+        mov byte [form], 1
+        mov word [hh], 32
+        sub word [my], 16
+.r:     ret
+
+; SpawnMushroom(x, y) : put a mushroom into a free entity record
+SpawnMushroom:
+        push bp
+        mov bp, sp
+        pusha
+        mov si, ents+6*ENT_SIZE
+        mov cx, 4
+.f:     cmp word [si+E_TYPE], 0
+        je  .found
+        add si, ENT_SIZE
+        loop .f
+        jmp .out
+.found: mov word [si+E_TYPE], 4
+        mov word [si+E_STATE], 1
+        mov ax, [bp+6]
+        mov [si+E_X], ax
+        mov ax, [bp+4]
+        mov [si+E_Y], ax
+        mov word [si+E_DIR], 1
+        mov word [si+E_TIMER], 0
+        mov word [si+E_XF], 0
+.out:   popa
+        pop bp
+        ret 4
+
+; TriggerBlock(px, py) : the hero's head hit the tile under this pixel
+TriggerBlock:
+        push bp
+        mov bp, sp
+        pusha
+        push word [bp+6]
+        push word [bp+4]
+        call GetTile
+        cmp al, 2
+        je  .brick
+        cmp al, 3
+        je  .coin
+        cmp al, 4
+        je  .mush
+        jmp .out
+.brick: cmp byte [form], 1       ; only Super Mario breaks bricks
+        jne .out
+        push word [bp+6]
+        push word [bp+4]
+        push word 0
+        call SetTile
+        push word 50
+        call AddScore
+        jmp .out
+.coin:  push word [bp+6]
+        push word [bp+4]
+        push word 5              ; becomes an empty block
+        call SetTile
+        push word 200
+        call AddScore
+        call AddCoin
+        jmp .out
+.mush:  push word [bp+6]
+        push word [bp+4]
+        push word 5
+        call SetTile
+        mov ax, [bp+6]
+        shr ax, 4
+        shl ax, 4                ; x of the block
+        push ax
+        mov ax, [bp+4]
+        shr ax, 4
+        shl ax, 4
+        sub ax, 16               ; the mushroom appears on top of the block
+        push ax
+        call SpawnMushroom
+.out:   popa
+        pop bp
+        ret 4
+
+; CheckTiles : coins and flag pole touched by the hero (3 x 3 sample points)
+CheckTiles:
+        pusha
+        xor si, si               ; si = sample row 0..2
+.r:     mov dx, [my]
+        cmp si, 0
+        je  .y
+        mov bx, [hh]
+        cmp si, 1
+        jne .last
+        shr bx, 1
+        jmp .ya
+.last:  dec bx
+.ya:    add dx, bx
+.y:     xor di, di               ; di = sample column (word offset)
+.c:     mov ax, [mx]
+        add ax, [xoff+di]
+        push ax
+        push dx
+        call GetTile
+        cmp al, 11
+        je  .coin
+        cmp al, 12
+        je  .flag
+.nx:    add di, 2
+        cmp di, 6
+        jb  .c
+        inc si
+        cmp si, 3
+        jb  .r
+        jmp .out
+.coin:  mov ax, [mx]
+        add ax, [xoff+di]
+        push ax
+        push dx
+        push word 0
+        call SetTile             ; the coin disappears from the working map
+        push word 200
+        call AddScore
+        call AddCoin
+        jmp .nx
+.flag:  mov byte [flag_hit], 1
+        mov ax, [my]
+        add ax, [hh]
+        dec ax
+        shr ax, 4                ; map row of the feet
+        mov [flag_row], ax
+        jmp .nx
+.out:   popa
+        ret

@@ -788,4 +788,24 @@ DrawNum:
         popa
         pop bp
         ret 12
+; ---------------------------------------------------------------------------
+; MODULE 6 : UpdateCamera(marioX) : AX = new camera x   (Section 5.3 rules)
+; ---------------------------------------------------------------------------
+UpdateCamera:
+        push bp
+        mov bp, sp
+        mov ax, [bp+4]
+        sub ax, [cam]            ; screen x
+        cmp ax, 160
+        jle .keep
+        mov ax, [bp+4]
+        sub ax, 160
+        cmp ax, MAXCAM
+        jle .a
+        mov ax, MAXCAM
+.a:     cmp ax, [cam]
+        jge .out                 ; never move the camera back
+.keep:  mov ax, [cam]
+.out:   pop bp
+        ret 2
 

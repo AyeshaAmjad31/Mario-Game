@@ -1,3 +1,4 @@
+
 ; ---------------------------------------------------------------------------
 ; MODULE 1 : named constants
 ; ---------------------------------------------------------------------------
@@ -1211,3 +1212,350 @@ UpdateHero:
         mov word [vy], 0         ; he starts falling
 .yend:  popa
         ret
+; ===========================================================================
+; MODULE 11 : enemies, shells and mushrooms
+; Entities live in a table of 16 byte records (see E_xxx constants) and are
+; visited with indexed addressing [si+E_X].
+; ===========================================================================
+
+; EntWalk(ptr, speed, edgeflag)
+; Gravity, horizontal step in 8.8 fixed point, turning at walls, at ledges
+; (edgeflag = 1, Koopa) and at other walking enemies. A sliding shell kills
+; every enemy it touches (+500).
+EntWalk:
+        push bp
+        mov bp, sp
+        pusha
+        mov si, [bp+8]
+        mov ax, [si+E_X]         ; is there ground under the feet?
+        add ax, 8
+        push ax
+        mov ax, [si+E_Y]
+        add ax, 16
+        push ax
+        call IsSolid
+        or  al, al
+        jnz .stand
+        add word [si+E_Y], 2     ; no: fall 2 pixels
+        mov ax, [si+E_X]
+        add ax, 8
+        push ax
+        mov ax, [si+E_Y]
+        add ax, 16
+        push ax
+        call IsSolid
+        or  al, al
+        jnz ..@j12   ; long jump: inverted short jump + near jmp
+        jmp near .out
+..@j12:
+        mov ax, [si+E_Y]
+        add ax, 16
+        shr ax, 4
+        shl ax, 4
+        sub ax, 16               ; land on top of the tile
+        mov [si+E_Y], ax
+        jmp .out
+.stand: mov ax, [bp+6]           ; speed
+        add [si+E_XF], al        ; fraction accumulates, carry adds a pixel
+        adc ah, 0
+        mov al, ah
+        xor ah, ah               ; ax = whole pixels this frame
+        cmp word [si+E_DIR], 0
+        jge .rt
+        neg ax
+.rt:    mov bx, ax               ; bx = signed step (kept for undo)
+        add [si+E_X], ax
+        mov ax, [si+E_X]         ; leading edge
+        cmp word [si+E_DIR], 0
+        jl  .lf
+        add ax, 15
+.lf:    mov dx, ax
+        push dx
+        mov ax, [si+E_Y]
+        add ax, 8
+        push ax
+        call IsSolid             ; wall in front?
+        or  al, al
+        jnz .turn
+        cmp word [bp+4], 0
+        je  .edge
+        push dx                  ; Koopa: is there floor ahead?
+        mov ax, [si+E_Y]
+        add ax, 16
+        push ax
+        call IsSolid
+        or  al, al
+        jz  .turn
+.edge:  cmp word [si+E_TYPE], 4  ; mushrooms ignore other entities
+        je  .out
+        mov di, ents
+.o:     cmp di, si
+        je  .on
+        cmp word [di+E_TYPE], 0
+        je  .on
+        cmp word [di+E_TYPE], 4
+        je  .on
+        cmp word [di+E_STATE], 1 ; only walking / sliding ones
+        jne .on
+        push word [si+E_X]
+        push word [si+E_Y]
+        push word 16
+        push word 16
+        push word [di+E_X]
+        push word [di+E_Y]
+        push word 16
+        push word 16
+        call Overlap
+        or  al, al
+        jz  .on
+        cmp word [si+E_TYPE], 3  ; is the mover a shell?
+        jne .turn
+        cmp word [di+E_TYPE], 3
+        je  .turn                ; shells just bounce off each other
+        mov word [di+E_TYPE], 0  ; enemy removed
+        push word 500
+        call AddScore
+.on:    add di, ENT_SIZE
+        cmp di, ents_end
+        jb  .o
+        jmp .out
+.turn:  sub [si+E_X], bx         ; undo the step and turn around
+        neg word [si+E_DIR]
+.out:   popa
+        pop bp
+        ret 6
+
+; UpdateEnts : activation, removal and movement of every entity
+UpdateEnts:
+        pusha
+        mov si, ents
+.loop:  mov ax, [si+E_TYPE]
+        or  ax, ax
+        jnz ..@j11   ; long jump: inverted short jump + near jmp
+        jmp near .next
+..@j11:
+        mov bx, [cam]
+        sub bx, 32
+        cmp [si+E_X], bx         ; far to the left of the camera
+        jge ..@j10   ; long jump: inverted short jump + near jmp
+        jmp near .remove
+..@j10:
+        cmp word [si+E_Y], 192   ; fell below the map
+        jl ..@j9   ; long jump: inverted short jump + near jmp
+        jmp near .remove
+..@j9:
+        cmp ax, 3
+        je  .shell
+        cmp ax, 4
+        je  .mush
+        cmp word [si+E_STATE], 0
+        jne .gk
+        mov bx, [cam]            ; waiting: wake up one tile before the screen
+        add bx, 336
+        cmp [si+E_X], bx
+        jge .next
+        mov word [si+E_STATE], 1
+        jmp .next
+.gk:    cmp ax, 1
+        jne .koopa
+        cmp word [si+E_STATE], 2 ; flattened Goomba: count down, then remove
+        jne .gwalk
+        dec word [si+E_TIMER]
+        jg  .next
+        mov word [si+E_TYPE], 0
+        jmp .next
+.gwalk: push si
+        push word 0x0080         ; 0.5 pixel per frame
+        push word 0
+        call EntWalk
+        jmp .next
+.koopa: push si
+        push word 0x00C0         ; 0.75 pixel per frame
+        push word 1
+        call EntWalk
+        jmp .next
+.shell: cmp word [si+E_TIMER], 0
+        jle .s1
+        dec word [si+E_TIMER]    ; kick grace time
+.s1:    cmp word [si+E_STATE], 1
+        jne .next
+        push si
+        push word 0x0300         ; 3 pixels per frame
+        push word 0
+        call EntWalk
+        jmp .next
+.mush:  push si
+        push word 0x0100         ; 1 pixel per frame
+        push word 0
+        call EntWalk
+        jmp .next
+.remove:
+        mov word [si+E_TYPE], 0
+.next:  add si, ENT_SIZE
+        cmp si, ents_end
+        jae ..@j8   ; long jump: inverted short jump + near jmp
+        jmp near .loop
+..@j8:
+        popa
+        ret
+
+; HeroVsEnts : stomp / hurt / kick / collect (Section 5.6)
+HeroVsEnts:
+        pusha
+        mov si, ents
+.loop:  mov ax, [si+E_TYPE]
+        or  ax, ax
+        jnz ..@j7   ; long jump: inverted short jump + near jmp
+        jmp near .next
+..@j7:
+        cmp ax, 4
+        je  .check
+        cmp ax, 3
+        je  .shchk
+        cmp word [si+E_STATE], 1 ; walking enemies only
+        je ..@j6   ; long jump: inverted short jump + near jmp
+        jmp near .next
+..@j6:
+        jmp .check
+.shchk: cmp word [si+E_TIMER], 0 ; kick grace: shell ignores Mario
+        jle ..@j5   ; long jump: inverted short jump + near jmp
+        jmp near .next
+..@j5:
+.check: mov ax, [mx]
+        add ax, 2
+        push ax
+        push word [my]
+        push word 12
+        push word [hh]
+        push word [si+E_X]
+        push word [si+E_Y]
+        push word 16
+        push word 16
+        call Overlap
+        or  al, al
+        jnz ..@j4   ; long jump: inverted short jump + near jmp
+        jmp near .next
+..@j4:
+        mov ax, [si+E_TYPE]
+        cmp ax, 4
+        jne ..@j3   ; long jump: inverted short jump + near jmp
+        jmp near .mush
+..@j3:
+        cmp ax, 3
+        jne .enemy
+        cmp word [si+E_STATE], 0
+        jne ..@j2   ; long jump: inverted short jump + near jmp
+        jmp near .kick
+..@j2:
+.enemy: cmp word [vy], 0         ; stomp test: falling ...
+        jle .hurt
+        mov ax, [si+E_Y]
+        add ax, 8
+        cmp [old_feet], ax       ; ... and feet were above the upper half
+        jg  .hurt
+        mov bx, [chain]
+        cmp bx, 10
+        jae .oneup
+        shl bx, 1
+        push word [chain_tab+bx] ; chain table: 100,200,400,500,800 ...
+        call AddScore
+        jmp .sc
+.oneup: call AddLife             ; 11th stomp and more: 1-UP
+.sc:    inc word [chain]
+        mov word [vy], BOUNCE
+        cmp byte [keys+KEY_SPACE], 0
+        je  .bn
+        mov word [vy], BOUNCEHI  ; jump key held = higher bounce
+.bn:    mov byte [onground], 0
+        mov ax, [si+E_TYPE]
+        cmp ax, 1
+        jne .k
+        mov word [si+E_STATE], 2 ; flat Goomba
+        mov word [si+E_TIMER], 30
+        jmp .next
+.k:     cmp ax, 2
+        jne .sh
+        mov word [si+E_TYPE], 3  ; Koopa becomes a stationary shell
+        mov word [si+E_STATE], 0
+        mov word [si+E_TIMER], 8
+        jmp .next
+.sh:    mov word [si+E_STATE], 0 ; sliding shell is stopped
+        mov word [si+E_TIMER], 8
+        jmp .next
+.hurt:  cmp word [state], ST_PLAY
+        jne .next
+        call HurtHero
+        jmp .next
+.kick:  push word 400
+        call AddScore
+        mov word [si+E_STATE], 1
+        mov word [si+E_TIMER], 8
+        mov word [si+E_DIR], 1   ; slide away from Mario
+        mov ax, [mx]
+        add ax, 8
+        mov bx, [si+E_X]
+        add bx, 8
+        cmp ax, bx
+        jl  .next
+        mov word [si+E_DIR], -1
+        jmp .next
+.mush:  push word 1000
+        call AddScore
+        call GrowHero
+        mov word [si+E_TYPE], 0
+.next:  add si, ENT_SIZE
+        cmp si, ents_end
+        jae ..@j1   ; long jump: inverted short jump + near jmp
+        jmp near .loop
+..@j1:
+        popa
+        ret
+
+; DrawEnts : draw every visible entity (camera x subtracted from world x)
+DrawEnts:
+        pusha
+        mov si, ents
+.l:     mov ax, [si+E_TYPE]
+        or  ax, ax
+        jz  .n
+        mov bx, [si+E_X]
+        sub bx, [cam]            ; screen x
+        cmp bx, -16
+        jle .n
+        cmp bx, SCRW
+        jge .n
+        xor dx, dx               ; flags
+        mov cx, spr_goomba
+        cmp ax, 1
+        jne .k
+        cmp word [si+E_STATE], 2
+        jne .gw
+        mov cx, spr_flat
+        jmp .draw
+.gw:    test byte [ticks], 8     ; two walking frames by mirroring
+        jz  .draw
+        mov dx, 1
+        jmp .draw
+.k:     cmp ax, 2
+        jne .s
+        mov cx, spr_koopa        ; the artwork faces left
+        cmp word [si+E_DIR], 0
+        jl  .draw
+        mov dx, 1
+        jmp .draw
+.s:     cmp ax, 3
+        jne .m
+        mov cx, spr_shell
+        jmp .draw
+.m:     mov cx, spr_mush
+.draw:  push bx
+        push word [si+E_Y]
+        push cx
+        push dx
+        call DrawSprite
+.n:     add si, ENT_SIZE
+        cmp si, ents_end
+        jb  .l
+        popa
+        ret
+

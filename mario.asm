@@ -172,3 +172,340 @@ shutdown:
         int 0x10
         mov ax, 0x4C00           ; terminate program
         int 0x21
+; ===========================================================================
+; MODULES 2-6 : video, tiles, sprites, text, frame buffer, camera
+; Every procedure preserves all registers it does not return.
+; ===========================================================================
+
+; PutPixel(x, y, colour) : plot one pixel into the frame buffer (clipped)
+; offset = y*320 + x = (y<<8) + (y<<6) + x
+PutPixel:
+        push bp
+        mov bp, sp
+        push ax
+        push bx
+        push di
+        push es
+        mov ax, [bp+8]           ; x
+        cmp ax, SCRW
+        jae .out                 ; unsigned compare also rejects negatives
+        mov bx, [bp+6]           ; y
+        cmp bx, SCRH
+        jae .out
+        mov es, [fbseg]
+        mov di, bx
+        shl di, 8
+        shl bx, 6
+        add di, bx
+        add di, ax
+        mov al, [bp+4]
+        mov [es:di], al
+.out:   pop es
+        pop di
+        pop bx
+        pop ax
+        pop bp
+        ret 6
+
+; FillRect(x, y, w, h, colour) : solid rectangle, clipped to the screen
+FillRect:
+        push bp
+        mov bp, sp
+        pusha
+        push es
+        mov ax, [bp+12]          ; x0
+        mov bx, [bp+10]          ; y0
+        mov cx, [bp+8]
+        add cx, ax               ; x1
+        mov dx, [bp+6]
+        add dx, bx               ; y1
+        cmp ax, 0
+        jge .a
+        xor ax, ax
+.a:     cmp cx, SCRW
+        jle .b
+        mov cx, SCRW
+.b:     cmp bx, 0
+        jge .c
+        xor bx, bx
+.c:     cmp dx, SCRH
+        jle .d
+        mov dx, SCRH
+.d:     cmp ax, cx
+        jge .done
+        cmp bx, dx
+        jge .done
+        sub cx, ax               ; cx = width
+        mov di, bx
+        shl di, 8
+        mov si, bx
+        shl si, 6
+        add di, si
+        add di, ax               ; di = y0*320 + x0
+        mov es, [fbseg]
+        mov al, [bp+4]
+.row:   push cx
+        push di
+        rep stosb
+        pop di
+        pop cx
+        add di, SCRW
+        inc bx
+        cmp bx, dx
+        jl  .row
+.done:  pop es
+        popa
+        pop bp
+        ret 10
+
+; ClearFB(colour) : fill the whole frame buffer with REP STOSW
+ClearFB:
+        push bp
+        mov bp, sp
+        push ax
+        push cx
+        push di
+        push es
+        mov es, [fbseg]
+        xor di, di
+        mov al, [bp+4]
+        mov ah, al
+        mov cx, 32000
+        rep stosw
+        pop es
+        pop di
+        pop cx
+        pop ax
+        pop bp
+        ret 2
+
+; Flip : copy the frame buffer to video memory with REP MOVSW
+Flip:
+        push ax
+        push cx
+        push si
+        push di
+        push ds
+        push es
+        mov ax, [fbseg]
+        mov ds, ax
+        mov ax, 0xA000
+        mov es, ax
+        xor si, si
+        xor di, di
+        mov cx, 32000
+        rep movsw
+        pop es
+        pop ds
+        pop di
+        pop si
+        pop cx
+        pop ax
+        ret
+
+; GetTile(px, py) : AL = tile code under the pixel position.
+; Outside the level on the left/right the tile is solid ground; above the
+; top or below the map it is sky.
+GetTile:
+        push bp
+        mov bp, sp
+        push bx
+        push cx
+        mov bx, [bp+6]           ; px
+        mov cx, [bp+4]           ; py
+        cmp bx, 0
+        jl  .wall
+        cmp bx, LEVELW
+        jge .wall
+        cmp cx, 0
+        jl  .air
+        cmp cx, 192
+        jge .air
+        shr cx, 4                ; row
+        shr bx, 4                ; column
+        mov ax, cx
+        shl ax, 6
+        shl cx, 2
+        sub ax, cx               ; row*64 - row*4 = row*60
+        add bx, ax
+        mov al, [map_work+bx]    ; based addressing into the working map
+        jmp .ret
+.wall:  mov al, 1
+        jmp .ret
+.air:   xor al, al
+.ret:   xor ah, ah
+        pop cx
+        pop bx
+        pop bp
+        ret 4
+
+; IsSolid(px, py) : AL = 1 if the tile there is solid
+IsSolid:
+        push bp
+        mov bp, sp
+        push bx
+        push word [bp+6]
+        push word [bp+4]
+        call GetTile
+        mov bl, al
+        xor bh, bh
+        mov al, [solid_tab+bx]
+        xor ah, ah
+        pop bx
+        pop bp
+        ret 4
+
+; SetTile(px, py, code) : write a tile of the WORKING map
+SetTile:
+        push bp
+        mov bp, sp
+        push ax
+        push bx
+        push cx
+        mov bx, [bp+8]
+        mov cx, [bp+6]
+        shr bx, 4
+        shr cx, 4
+        mov ax, cx
+        shl ax, 6
+        shl cx, 2
+        sub ax, cx
+        add bx, ax
+        mov al, [bp+4]
+        mov [map_work+bx], al
+        pop cx
+        pop bx
+        pop ax
+        pop bp
+        ret 6
+
+; SolidColumn(x, y0, y1) : AL = 1 if any tile at x between y0..y1 is solid
+SolidColumn:
+        push bp
+        mov bp, sp
+        push dx
+        mov dx, [bp+6]
+.l:     push word [bp+8]
+        push dx
+        call IsSolid
+        or  al, al
+        jnz .yes
+        cmp dx, [bp+4]
+        jge .no
+        add dx, 8
+        cmp dx, [bp+4]
+        jle .l
+        mov dx, [bp+4]
+        jmp .l
+.no:    xor al, al
+        jmp .out
+.yes:   mov al, 1
+.out:   xor ah, ah
+        pop dx
+        pop bp
+        ret 6
+
+; Overlap(x1,y1,w1,h1, x2,y2,w2,h2) : AL = 1 if the rectangles overlap
+Overlap:
+        push bp
+        mov bp, sp
+        push bx
+        mov ax, [bp+18]
+        mov bx, [bp+10]
+        add bx, [bp+6]
+        cmp ax, bx
+        jge .no
+        mov ax, [bp+10]
+        mov bx, [bp+18]
+        add bx, [bp+14]
+        cmp ax, bx
+        jge .no
+        mov ax, [bp+16]
+        mov bx, [bp+8]
+        add bx, [bp+4]
+        cmp ax, bx
+        jge .no
+        mov ax, [bp+8]
+        mov bx, [bp+16]
+        add bx, [bp+12]
+        cmp ax, bx
+        jge .no
+        mov al, 1
+        jmp .out
+.no:    xor al, al
+.out:   xor ah, ah
+        pop bx
+        pop bp
+        ret 16
+
+; ---------------------------------------------------------------------------
+; MODULE 4 : DrawSprite(x, y, address, flags)
+; flags: bit0 mirror, bit1 dither (half transparent), bit2 stretch x2 in height
+; colour 0 is transparent. Clipped on all four sides.
+; ---------------------------------------------------------------------------
+DrawSprite:
+        push bp
+        mov bp, sp
+        pusha
+        push es
+        mov es, [fbseg]
+        mov word [spr_r], 0
+.row:   mov ax, [spr_r]
+        mov si, ax
+        shl si, 4
+        add si, [bp+6]           ; si -> this row of the bitmap
+        test byte [bp+4], 4
+        jz  .n1
+        shl ax, 1
+.n1:    add ax, [bp+8]
+        mov [spr_dy], ax
+        call .line
+        test byte [bp+4], 4
+        jz  .next
+        inc word [spr_dy]
+        call .line
+.next:  inc word [spr_r]
+        cmp word [spr_r], 16
+        jb  .row
+        pop es
+        popa
+        pop bp
+        ret 8
+
+.line:  mov bx, [spr_dy]
+        cmp bx, SCRH
+        jae .lret
+        mov di, bx
+        shl di, 8
+        shl bx, 6
+        add di, bx               ; di = y*320
+        xor cx, cx
+.px:    mov ax, [bp+10]
+        add ax, cx               ; screen x
+        cmp ax, SCRW
+        jae .pn
+        mov bx, si
+        test byte [bp+4], 1
+        jz  .nm
+        mov dx, 15
+        sub dx, cx
+        add bx, dx               ; mirrored column
+        jmp .gp
+.nm:    add bx, cx
+.gp:    mov dl, [bx]
+        or  dl, dl
+        jz  .pn
+        test byte [bp+4], 2
+        jz  .put
+        push ax
+        add ax, [spr_dy]
+        test al, 1
+        pop ax
+        jnz .pn
+.put:   mov bx, ax
+        mov [es:di+bx], dl
+.pn:    inc cx
+        cmp cx, 16
+        jb  .px
+.lret:  ret
+

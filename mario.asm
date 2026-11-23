@@ -638,4 +638,154 @@ DrawSprite:
         cmp cx, 16
         jb  .px
 .lret:  ret
+; ---------------------------------------------------------------------------
+; MODULE 3 : DrawMap(camera) draws the visible 21 columns of the working map
+; ---------------------------------------------------------------------------
+DrawMap:
+        push bp
+        mov bp, sp
+        pusha
+        xor si, si               ; si = screen column
+.col:   mov ax, [bp+4]
+        shr ax, 4
+        add ax, si               ; ax = map column
+        cmp ax, MAPW
+        jae .end
+        mov di, ax
+        mov cx, 1                ; row 0 is the HUD
+.row:   mov ax, cx
+        shl ax, 6
+        mov bx, cx
+        shl bx, 2
+        sub ax, bx
+        add ax, di
+        mov bx, ax
+        mov al, [map_work+bx]
+        or  al, al
+        jz  .nxt
+        xor ah, ah
+        shl ax, 1
+        mov bx, ax
+        mov bx, [tile_addr+bx]   ; sprite of this tile
+        mov dx, si
+        shl dx, 4
+        mov ax, [bp+4]
+        and ax, 15
+        sub dx, ax               ; x = col*16 - (camera mod 16)
+        push dx
+        mov dx, cx
+        shl dx, 4
+        push dx
+        push bx
+        push word 0
+        call DrawSprite
+.nxt:   inc cx
+        cmp cx, MAPH
+        jb  .row
+        inc si
+        cmp si, 21
+        jb  .col
+.end:   popa
+        pop bp
+        ret 2
+
+; ---------------------------------------------------------------------------
+; MODULE 13 : text.  The 8x8 letters come from the BIOS ROM font.
+; DrawChar(x, y, ch, colour)
+; ---------------------------------------------------------------------------
+DrawChar:
+        push bp
+        mov bp, sp
+        pusha
+        mov ax, [bp+6]
+        and ax, 0x00FF
+        shl ax, 3
+        add ax, [fontoff]
+        mov si, ax
+        mov bx, [fontseg]
+        xor cx, cx               ; row
+.row:   push ds
+        mov ds, bx
+        mov dl, [si]
+        pop ds
+        inc si
+        xor di, di               ; column
+.col:   test dl, 0x80
+        jz  .nb
+        mov ax, [bp+10]
+        add ax, di
+        push ax
+        mov ax, [bp+8]
+        add ax, cx
+        push ax
+        push word [bp+4]
+        call PutPixel
+.nb:    shl dl, 1
+        inc di
+        cmp di, 8
+        jb  .col
+        inc cx
+        cmp cx, 8
+        jb  .row
+        popa
+        pop bp
+        ret 8
+
+; DrawText(x, y, string, colour) : zero terminated string
+DrawText:
+        push bp
+        mov bp, sp
+        pusha
+        mov si, [bp+6]
+        mov di, [bp+10]
+.l:     mov al, [si]
+        or  al, al
+        jz  .d
+        xor ah, ah
+        push di
+        push word [bp+8]
+        push ax
+        push word [bp+4]
+        call DrawChar
+        add di, 8
+        inc si
+        jmp .l
+.d:     popa
+        pop bp
+        ret 8
+
+; DrawNum(x, y, high, low, digits, colour) : 32 bit number as decimal.
+; Remainders of repeated division by 10 are pushed, then popped in reverse.
+DrawNum:
+        push bp
+        mov bp, sp
+        pusha
+        mov bx, [bp+10]          ; high word
+        mov si, [bp+8]           ; low word
+        mov di, [bp+6]           ; digit count
+        mov cx, di
+.d1:    mov ax, bx
+        xor dx, dx
+        div word [ten]
+        mov bx, ax
+        mov ax, si
+        div word [ten]           ; dx:ax / 10, remainder in dx
+        mov si, ax
+        push dx
+        loop .d1
+        mov cx, di
+        mov si, [bp+14]
+.d2:    pop ax
+        add al, '0'
+        xor ah, ah
+        push si
+        push word [bp+12]
+        push ax
+        push word [bp+4]
+        call DrawChar
+        add si, 8
+        loop .d2
+        popa
+        pop bp
+        ret 12
 

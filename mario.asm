@@ -1610,5 +1610,178 @@ NewGame:
         mov word [lives], 3
         call ResetLevel
         ret
+; ---------------------------------------------------------------------------
+; DrawHero : picks the pose, mirrors it, blinks while invulnerable.
+; Super Mario is the same bitmap stretched to 16 x 32 (flag bit 2).
+; ---------------------------------------------------------------------------
+DrawHero:
+        pusha
+        cmp word [state], ST_WIN
+        jne .norm
+        cmp word [wphase], 0
+        jne .out                 ; he disappears while "walking to the castle"
+.norm:  cmp word [invuln], 0
+        je  .vis
+        test byte [invuln], 1    ; blink: draw on alternate frames only
+        jnz .out
+.vis:   mov bx, [mx]
+        sub bx, [cam]
+        mov cx, spr_mstand
+        cmp word [state], ST_DYING
+        je  .jump
+        cmp byte [onground], 0
+        jne .gr
+.jump:  mov cx, spr_mjump
+        jmp .fl
+.gr:    cmp word [vx], 0
+        je  .fl
+        test byte [ticks], 4     ; walking animation
+        jz  .fl
+        mov cx, spr_mrun
+.fl:    xor dx, dx
+        cmp byte [face], 0
+        je  .f2
+        or  dx, 1
+.f2:    cmp byte [form], 1
+        jne .d
+        or  dx, 4
+.d:     push bx
+        push word [my]
+        push cx
+        push dx
+        call DrawSprite
+.out:   popa
+        ret
+
+; DrawHUD : the top 16 pixel strip, two text lines
+DrawHUD:
+        pusha
+        push word 0
+        push word 0
+        push word 320
+        push word 16
+        push word 0
+        call FillRect
+        push word 0
+        push word 0
+        push word s_score
+        push word 7
+        call DrawText
+        push word 48
+        push word 0
+        push word [score_hi]
+        push word [score_lo]
+        push word 6
+        push word 8
+        call DrawNum
+        push word 104
+        push word 0
+        push word s_coins
+        push word 7
+        call DrawText
+        push word 160
+        push word 0
+        push word 0
+        push word [coins]
+        push word 2
+        push word 8
+        call DrawNum
+        push word 200
+        push word 0
+        push word s_time
+        push word 7
+        call DrawText
+        push word 240
+        push word 0
+        push word 0
+        push word [time]
+        push word 3
+        push word 8
+        call DrawNum
+        push word 0
+        push word 8
+        push word s_lives
+        push word 7
+        call DrawText
+        push word 56
+        push word 8
+        push word 0
+        push word [lives]
+        push word 2
+        push word 8
+        call DrawNum
+        push word 120
+        push word 8
+        push word s_world
+        push word 7
+        call DrawText
+        push word 224
+        push word 8
+        push word s_health
+        push word 7
+        call DrawText
+        mov ax, 13               ; heart 1: filled if hp >= 1
+        cmp byte [hp], 1
+        jb  .h1
+        mov ax, 4
+.h1:    push word 280
+        push word 8
+        push word 3              ; character 3 of the ROM font is a heart
+        push ax
+        call DrawChar
+        mov ax, 13               ; heart 2: filled if hp = 2
+        cmp byte [hp], 2
+        jb  .h2
+        mov ax, 4
+.h2:    push word 288
+        push word 8
+        push word 3
+        push ax
+        call DrawChar
+        popa
+        ret
+
+; DrawWorld : steps 9 of the frame order (clear, map, items, hero, HUD)
+DrawWorld:
+        pusha
+        push word 1              ; sky colour
+        call ClearFB
+        push word 0
+        push word 192
+        push word 320
+        push word 8
+        push word 0
+        call FillRect            ; bottom 8 pixels stay black
+        push word [cam]
+        call DrawMap
+        mov ax, POLEX-8          ; green flag on the pole, scrolls with world
+        sub ax, [cam]
+        push ax
+        push word 34
+        push word 15
+        push word 10
+        push word 9
+        call FillRect
+        call DrawEnts
+        call DrawHero
+        call DrawHUD
+        popa
+        ret
+
+; DrawBox : bordered panel used by the end screens
+DrawBox:
+        push word 8
+        push word 8
+        push word 304
+        push word 184
+        push word 8
+        call FillRect
+        push word 12
+        push word 12
+        push word 296
+        push word 176
+        push word 0
+        call FillRect
+        ret
 
 

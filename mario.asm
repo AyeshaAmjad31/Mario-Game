@@ -1018,3 +1018,196 @@ CheckTiles:
         jmp .nx
 .out:   popa
         ret
+; ---------------------------------------------------------------------------
+; MODULE 9/10 : UpdateHero - input, acceleration, jump, gravity, then move one
+; axis at a time with tile collision.
+; ---------------------------------------------------------------------------
+UpdateHero:
+        pusha
+        mov ax, [my]
+        add ax, [hh]
+        mov [old_feet], ax       ; feet position of the previous frame
+        mov bx, WALKMAX
+        cmp byte [keys+KEY_LSHIFT], 0
+        je  .nr
+        mov bx, RUNMAX
+.nr:    mov ax, [vx]
+        cmp byte [keys+KEY_RIGHT], 0
+        je  .notr
+        mov byte [face], 0
+        cmp ax, 0
+        jge .racc
+        add ax, ACC*2            ; braking is faster than friction
+        jmp .rcl
+.racc:  add ax, ACC
+.rcl:   cmp ax, bx
+        jle .xdone
+        mov ax, bx
+        jmp .xdone
+.notr:  cmp byte [keys+KEY_LEFT], 0
+        je  .fric
+        mov byte [face], 1
+        cmp ax, 0
+        jle .lacc
+        sub ax, ACC*2
+        jmp .lcl
+.lacc:  sub ax, ACC
+.lcl:   neg bx
+        cmp ax, bx
+        jge .xdone
+        mov ax, bx
+        jmp .xdone
+.fric:  cmp ax, 0
+        jg  .fp
+        jl  .fn
+        jmp .xdone
+.fp:    sub ax, FRIC
+        jge .xdone
+        xor ax, ax
+        jmp .xdone
+.fn:    add ax, FRIC
+        jle .xdone
+        xor ax, ax
+.xdone: mov [vx], ax
+
+        cmp byte [keys+KEY_SPACE], 0
+        je  .nospace
+        cmp byte [onground], 0   ; jump only from solid ground
+        je  .jdone
+        cmp byte [jlock], 0      ; and only once per key press
+        jne .jdone
+        mov word [vy], JUMPV
+        mov byte [onground], 0
+        mov byte [jlock], 1
+        jmp .jdone
+.nospace:
+        mov byte [jlock], 0
+        cmp word [vy], JUMPCUT   ; released while rising fast: cut the jump
+        jge .jdone
+        mov word [vy], JUMPCUT
+.jdone: add word [vy], GRAV
+        cmp word [vy], MAXFALL
+        jle .gdone
+        mov word [vy], MAXFALL
+.gdone:
+
+        ; ---- horizontal move: add vx to mx:mxf ----
+        mov al, [mxf]
+        add al, [vx]
+        mov [mxf], al
+        mov al, [vx+1]
+        cbw
+        adc [mx], ax
+        mov ax, [vx]
+        cmp ax, 0
+        je  .xend
+        jl  .left
+        mov ax, [mx]
+        add ax, 13               ; right edge of the 12 pixel hit box
+        push ax
+        mov ax, [my]
+        push ax
+        add ax, [hh]
+        dec ax
+        push ax
+        call SolidColumn
+        or  al, al
+        jz  .xend
+        mov ax, [mx]
+        add ax, 13
+        sar ax, 4
+        shl ax, 4
+        sub ax, 14               ; place him against the wall
+        mov [mx], ax
+        mov byte [mxf], 0
+        mov word [vx], 0
+        jmp .xend
+.left:  mov ax, [mx]
+        add ax, 2
+        push ax
+        mov ax, [my]
+        push ax
+        add ax, [hh]
+        dec ax
+        push ax
+        call SolidColumn
+        or  al, al
+        jz  .xend
+        mov ax, [mx]
+        add ax, 2
+        sar ax, 4
+        inc ax
+        shl ax, 4
+        sub ax, 2
+        mov [mx], ax
+        mov byte [mxf], 0
+        mov word [vx], 0
+.xend:
+
+        ; ---- vertical move: add vy to my:myf ----
+        mov al, [myf]
+        add al, [vy]
+        mov [myf], al
+        mov al, [vy+1]
+        cbw
+        adc [my], ax
+        mov byte [onground], 0
+        cmp word [vy], 0
+        jl  .up
+        mov ax, [mx]             ; falling or resting: look one pixel below
+        add ax, 2
+        push ax
+        mov ax, [my]
+        add ax, [hh]
+        push ax
+        call IsSolid
+        or  al, al
+        jnz .land
+        mov ax, [mx]
+        add ax, 13
+        push ax
+        mov ax, [my]
+        add ax, [hh]
+        push ax
+        call IsSolid
+        or  al, al
+        jz  .yend
+.land:  mov ax, [my]
+        add ax, [hh]
+        sar ax, 4
+        shl ax, 4
+        sub ax, [hh]             ; feet on top of the tile
+        mov [my], ax
+        mov byte [myf], 0
+        mov word [vy], 0
+        mov byte [onground], 1
+        mov word [chain], 0      ; landing resets the stomp chain
+        jmp .yend
+.up:    mov ax, [mx]
+        add ax, 2
+        push ax
+        push word [my]
+        call IsSolid
+        or  al, al
+        jnz .head
+        mov ax, [mx]
+        add ax, 13
+        push ax
+        push word [my]
+        call IsSolid
+        or  al, al
+        jz  .yend
+.head:  mov ax, [mx]
+        add ax, 8                ; tile under the centre of the head
+        push ax
+        push word [my]
+        call TriggerBlock
+        mov ax, [my]
+        sar ax, 4
+        inc ax
+        shl ax, 4
+        mov [my], ax             ; head just under the block
+        mov byte [myf], 0
+        mov word [vy], 0         ; he starts falling
+.yend:  popa
+        ret

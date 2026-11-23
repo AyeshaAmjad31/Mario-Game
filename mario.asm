@@ -172,6 +172,136 @@ shutdown:
         int 0x10
         mov ax, 0x4C00           ; terminate program
         int 0x21
+; ---------------------------------------------------------------------------
+; MODULE 7: keyboard interrupt handler
+; Reads port 60h, ignores the E0h prefix, keeps a 128 byte table of held keys
+; and a table of fresh key presses (edge). Sends EOI and returns with IRET.
+; ---------------------------------------------------------------------------
+kb_isr:
+        push ax
+        push bx
+        push ds
+        mov ax, cs
+        mov ds, ax
+        in  al, 0x60             ; scan code
+        cmp al, 0xE0             ; extended prefix: ignore, next code follows
+        je  .done
+        mov bl, al
+        xor bh, bh
+        and bl, 0x7F             ; strip the release bit
+        test al, 0x80
+        jnz .release
+        cmp byte [keys+bx], 0    ; typematic repeat: already held
+        jne .done
+        mov byte [keys+bx], 1
+        mov byte [edge+bx], 1    ; fresh press
+        jmp .done
+.release:
+        mov byte [keys+bx], 0
+.done:
+        mov al, 0x20             ; end of interrupt
+        out 0x20, al
+        pop ds
+        pop bx
+        pop ax
+        iret
+
+; ---------------------------------------------------------------------------
+; MODULE 8: timer interrupt handler. Counts ticks, then chains to the old one.
+; ---------------------------------------------------------------------------
+tm_isr:
+        push ds
+        push ax
+        mov ax, cs
+        mov ds, ax
+        inc word [ticks]
+        pop ax
+        pop ds
+        jmp far [cs:old8]        ; the old handler sends the EOI and does IRET
+
+; ---------------------------------------------------------------------------
+; WaitTick : waits until the tick counter changes (game speed from timer)
+; outputs  : [tickdelta] = ticks passed since the last frame (at least 1)
+; ---------------------------------------------------------------------------
+WaitTick:
+        push ax
+.w:     mov ax, [ticks]
+        cmp ax, [lasttick]
+        je  .w
+        mov [lasttick], ax
+        sub ax, [prevtick]
+        mov [tickdelta], ax
+        mov ax, [lasttick]
+        mov [prevtick], ax
+        pop ax
+        ret
+
+; ---------------------------------------------------------------------------
+; TestEdge(scancode) : AL = 1 if the key was freshly pressed since the last
+; test, and clears the flag.        changes: AX
+; ---------------------------------------------------------------------------
+TestEdge:
+        push bp
+        mov bp, sp
+        push bx
+        mov bx, [bp+4]
+        mov al, [edge+bx]
+        mov byte [edge+bx], 0
+        xor ah, ah
+        pop bx
+        pop bp
+        ret 2
+
+; ClearEdges : forget all pending key presses.    changes: nothing
+ClearEdges:
+        push ax
+        push cx
+        push di
+        mov di, edge
+        mov cx, 128
+        xor al, al
+        rep stosb
+        pop di
+        pop cx
+        pop ax
+        ret
+
+; ---------------------------------------------------------------------------
+; DecodeBytes(ptr, count, legend, legendlen, valtab)
+; Replaces every byte at ptr by its position in 'legend'; if valtab is not
+; zero the position is looked up in valtab. Unknown letters become 0.
+; ---------------------------------------------------------------------------
+DecodeBytes:
+        push bp
+        mov bp, sp
+        pusha
+        push es
+        mov ax, ds
+        mov es, ax
+        mov si, [bp+12]
+.next:  mov al, [si]
+        mov di, [bp+8]
+        mov cx, [bp+6]
+        repne scasb
+        jne .none
+        mov bx, di
+        sub bx, [bp+8]
+        dec bx                   ; bx = position in the legend
+        mov al, bl
+        cmp word [bp+4], 0
+        je  .store
+        mov di, [bp+4]
+        mov al, [di+bx]
+        jmp .store
+.none:  xor al, al
+.store: mov [si], al
+        inc si
+        dec word [bp+10]
+        jnz .next
+        pop es
+        popa
+        pop bp
+        ret 10
 ; ===========================================================================
 ; MODULES 2-6 : video, tiles, sprites, text, frame buffer, camera
 ; Every procedure preserves all registers it does not return.

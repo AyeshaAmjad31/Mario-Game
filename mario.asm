@@ -1783,5 +1783,486 @@ DrawBox:
         push word 0
         call FillRect
         ret
+; ---------------------------------------------------------------------------
+; TITLE
+; ---------------------------------------------------------------------------
+st_title:
+        pusha
+        push word KEY_UP
+        call TestEdge
+        or  al, al
+        jz  .a
+        mov word [menu_sel], 0
+.a:     push word KEY_DOWN
+        call TestEdge
+        or  al, al
+        jz  .b
+        mov word [menu_sel], 1
+.b:     push word KEY_ESC
+        call TestEdge
+        or  al, al
+        jz  .c
+        mov word [state], ST_EXIT
+        jmp .ret
+.c:     push word KEY_ENTER
+        call TestEdge
+        or  al, al
+        jz  .draw
+        cmp word [menu_sel], 0
+        jne .ex
+        call NewGame
+        call ClearEdges
+        mov word [state], ST_PLAY
+        jmp .ret
+.ex:    mov word [state], ST_EXIT
+        jmp .ret
+.draw:  push word 1
+        call ClearFB
+        xor si, si
+.g:     push si                  ; row of ground tiles
+        push word 160
+        push word spr_ground
+        push word 0
+        call DrawSprite
+        push si
+        push word 176
+        push word spr_ground
+        push word 0
+        call DrawSprite
+        add si, 16
+        cmp si, 320
+        jb  .g
+        push word 40
+        push word 144
+        push word spr_mstand
+        push word 0
+        call DrawSprite
+        push word 250
+        push word 144
+        push word spr_goomba
+        push word 0
+        call DrawSprite
+        push word 70
+        push word 12
+        push word 180
+        push word 44
+        push word 15
+        call FillRect
+        push word 74
+        push word 16
+        push word 172
+        push word 36
+        push word 4
+        call FillRect
+        push word 88
+        push word 26
+        push word s_title
+        push word 7
+        call DrawText
+        push word 89             ; second pass one pixel right = bold letters
+        push word 26
+        push word s_title
+        push word 7
+        call DrawText
+        push word 112
+        push word 40
+        push word s_sub
+        push word 8
+        call DrawText
+        push word 96
+        push word 72
+        push word 128
+        push word 40
+        push word 0
+        call FillRect
+        push word 120
+        push word 80
+        push word s_start
+        push word 7
+        call DrawText
+        push word 120
+        push word 96
+        push word s_exit
+        push word 7
+        call DrawText
+        mov ax, [menu_sel]       ; the highlight marker
+        shl ax, 4
+        add ax, 80
+        push word 104
+        push ax
+        push word '>'
+        push word 8
+        call DrawChar
+        push word 20
+        push word 118
+        push word s_team
+        push word 8
+        call DrawText
+        push word 24
+        push word 128
+        push word s_ctrl
+        push word 7
+        call DrawText
+        push word 56
+        push word 136
+        push word s_ctrl2
+        push word 7
+        call DrawText
+        call Flip
+.ret:   popa
+        ret
 
+; ---------------------------------------------------------------------------
+; PLAYING : the frame order of Section 5.13
+; ---------------------------------------------------------------------------
+st_play:
+        pusha
+        push word KEY_P
+        call TestEdge
+        or  al, al
+        jz  .np
+        mov word [state], ST_PAUSE
+        jmp .draw
+.np:    push word KEY_ESC
+        call TestEdge
+        or  al, al
+        jz  .dbg
+        mov word [state], ST_TITLE
+        mov word [menu_sel], 0
+        call ClearEdges
+        jmp .ret
+.dbg:   push word KEY_F1         ; debug keys, listed in the README
+        call TestEdge
+        or  al, al
+        jz  .d2
+        mov word [time], 5
+.d2:    push word KEY_F2
+        call TestEdge
+        or  al, al
+        jz  .clk
+        mov word [coins], 99
+.clk:   mov ax, [tickdelta]      ; clock from timer ticks, 30 ticks = 1 second
+        cmp ax, 4
+        jbe .t
+        mov ax, 4
+.t:     add [clk], ax
+.c1:    cmp word [clk], 30
+        jb  .cd
+        sub word [clk], 30
+        cmp word [time], 0
+        jle .c1
+        dec word [time]
+        jmp .c1
+.cd:    cmp word [time], 0
+        jg  .alive
+        call KillHero            ; clock reached 0
+        jmp .draw
+.alive: call UpdateHero          ; step 3
+        call UpdateEnts          ; step 4
+        call HeroVsEnts          ; step 5
+        call CheckTiles
+        cmp word [invuln], 0     ; step 6
+        je  .pit
+        dec word [invuln]
+.pit:   cmp word [state], ST_PLAY ; step 7
+        jne .draw
+        cmp word [my], 192       ; pit
+        jl  .flag
+        call KillHero
+        jmp .draw
+.flag:  cmp byte [flag_hit], 0
+        je  .cam
+        call StartWin
+        jmp .draw
+.cam:   push word [mx]           ; step 8
+        call UpdateCamera
+        mov [cam], ax
+        cmp [mx], ax             ; invisible wall at the left screen edge
+        jge .rt
+        mov [mx], ax
+        mov byte [mxf], 0
+        mov word [vx], 0
+.rt:    cmp word [mx], 944       ; right end of the level
+        jle .draw
+        mov word [mx], 944
+        mov word [vx], 0
+.draw:  call DrawWorld           ; steps 9 and 10
+        call Flip
+.ret:   popa
+        ret
+
+; StartWin : the flag pole was touched
+StartWin:
+        mov word [state], ST_WIN
+        mov word [wphase], 0
+        mov word [wtimer], 0
+        mov ax, [flag_row]
+        cmp ax, 11
+        jbe .o
+        mov ax, 11
+.o:     shl ax, 1
+        mov bx, ax
+        push word [flag_tab+bx]  ; 100 .. 5000 by height of contact
+        call AddScore
+        mov word [mx], POLEX-4
+        mov byte [mxf], 0
+        mov word [vx], 0
+        mov word [vy], 0
+        mov byte [onground], 0
+        mov word [invuln], 0
+        mov byte [face], 0
+        ret
+
+; ---------------------------------------------------------------------------
+; PAUSED
+; ---------------------------------------------------------------------------
+st_pause:
+        pusha
+        push word KEY_P
+        call TestEdge
+        or  al, al
+        jz  .a
+        mov word [state], ST_PLAY
+        jmp .ret
+.a:     push word KEY_ESC
+        call TestEdge
+        or  al, al
+        jz  .d
+        mov word [state], ST_TITLE
+        mov word [menu_sel], 0
+        call ClearEdges
+        jmp .ret
+.d:     call DrawWorld
+        push word 116
+        push word 88
+        push word 88
+        push word 24
+        push word 15
+        call FillRect
+        push word 118
+        push word 90
+        push word 84
+        push word 20
+        push word 4
+        call FillRect
+        push word 136
+        push word 96
+        push word s_paused
+        push word 7
+        call DrawText
+        call Flip
+.ret:   popa
+        ret
+
+; ---------------------------------------------------------------------------
+; DYING : death hop, then fall off the bottom with gravity and no collisions
+; ---------------------------------------------------------------------------
+st_dying:
+        pusha
+        inc word [dtimer]
+        add word [vy], GRAV
+        mov al, [myf]
+        add al, [vy]
+        mov [myf], al
+        mov al, [vy+1]
+        cbw
+        adc [my], ax
+        call DrawWorld
+        call Flip
+        cmp word [my], 200
+        jge .done
+        cmp word [dtimer], 90
+        jb  .ret
+.done:  dec word [lives]
+        call ClearEdges
+        mov word [wtimer], 60    ; Life-lost screen lasts about 2 seconds
+        mov word [state], ST_LIFE
+        cmp word [lives], 0
+        jg  .ret
+        mov word [state], ST_OVER
+.ret:   popa
+        ret
+
+; LIFE LOST : world name, Mario icon and lives left, then restart the level
+st_life:
+        pusha
+        push word 0
+        call ClearFB
+        push word 112
+        push word 64
+        push word s_world
+        push word 7
+        call DrawText
+        push word 112
+        push word 92
+        push word spr_mstand
+        push word 0
+        call DrawSprite
+        push word 136
+        push word 96
+        push word s_x
+        push word 7
+        call DrawText
+        push word 152
+        push word 96
+        push word 0
+        push word [lives]
+        push word 2
+        push word 8
+        call DrawNum
+        call Flip
+        dec word [wtimer]
+        jg  .ret
+        call ResetLevel          ; map, enemies, clock, camera, hero
+        call ClearEdges
+        mov word [state], ST_PLAY
+.ret:   popa
+        ret
+
+; WIN SEQUENCE : slide down the pole, then disappear for about 1 second
+st_win:
+        pusha
+        cmp word [wphase], 0
+        jne .walk
+        mov ax, [my]
+        add ax, [hh]
+        cmp ax, 144              ; top of the base block
+        jge .sdone
+        add word [my], 2
+        jmp .draw
+.sdone: mov word [wphase], 1
+        mov word [wtimer], 0
+        jmp .draw
+.walk:  inc word [wtimer]
+        cmp word [wtimer], 30
+        jb  .draw
+        mov ax, [time]           ; time left x 50 becomes bonus points
+        mov bx, 50
+        mul bx
+        mov [bonus], ax
+        push ax
+        call AddScore
+        mov word [state], ST_COMPLETE
+        call ClearEdges
+        jmp .ret
+.draw:  call DrawWorld
+        call Flip
+.ret:   popa
+        ret
+
+; LEVEL COMPLETE
+st_complete:
+        pusha
+        push word KEY_ENTER
+        call TestEdge
+        or  al, al
+        jz  .d
+        mov word [state], ST_TITLE
+        mov word [menu_sel], 0
+        call ClearEdges
+        jmp .ret
+.d:     push word 0
+        call ClearFB
+        call DrawBox
+        push word 100
+        push word 30
+        push word s_complete
+        push word 8
+        call DrawText
+        push word 80
+        push word 60
+        push word s_score
+        push word 7
+        call DrawText
+        push word 136
+        push word 60
+        push word [score_hi]
+        push word [score_lo]
+        push word 6
+        push word 7
+        call DrawNum
+        push word 80
+        push word 80
+        push word s_coins
+        push word 7
+        call DrawText
+        push word 136
+        push word 80
+        push word 0
+        push word [coins]
+        push word 2
+        push word 7
+        call DrawNum
+        push word 80
+        push word 100
+        push word s_left
+        push word 7
+        call DrawText
+        push word 160
+        push word 100
+        push word 0
+        push word [time]
+        push word 3
+        push word 7
+        call DrawNum
+        push word 80
+        push word 120
+        push word s_bonus
+        push word 7
+        call DrawText
+        push word 136
+        push word 120
+        push word 0
+        push word [bonus]
+        push word 5
+        push word 8
+        call DrawNum
+        push word 84
+        push word 158
+        push word s_enter
+        push word 7
+        call DrawText
+        call Flip
+.ret:   popa
+        ret
+
+; GAME OVER
+st_over:
+        pusha
+        push word KEY_ENTER
+        call TestEdge
+        or  al, al
+        jz  .d
+        mov word [state], ST_TITLE
+        mov word [menu_sel], 0
+        call ClearEdges
+        jmp .ret
+.d:     push word 0
+        call ClearFB
+        call DrawBox
+        push word 124
+        push word 56
+        push word s_over
+        push word 4
+        call DrawText
+        push word 88
+        push word 90
+        push word s_final
+        push word 7
+        call DrawText
+        push word 200
+        push word 90
+        push word [score_hi]
+        push word [score_lo]
+        push word 6
+        push word 8
+        call DrawNum
+        push word 84
+        push word 140
+        push word s_enter
+        push word 7
+        call DrawText
+        call Flip
+.ret:   popa
+        ret
 

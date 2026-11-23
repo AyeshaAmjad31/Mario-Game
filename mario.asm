@@ -2394,3 +2394,220 @@ s_final:    db "FINAL SCORE", 0
 
 map_work:   times MAPW*MAPH db 0 ; working copy of the map (changes in play)
 
+; ===========================================================================
+; MODULE 4 : original 16 x 16 artwork. One letter per pixel, 16 rows each.
+; . transparent  R red  S skin  N brown  W white  Y yellow  G green
+; D dark green  B blue  Q gold  A gray  P pipe green  K outline
+; O brick orange  M mortar
+; ===========================================================================
+spr_start:
+spr_ground:
+        db "GGGGGGGGGGGGGGGG"
+        db "DGGGDGGGGDGGGDGG"
+        times 3 db "NNNNNNNNNNNNNNNN"
+        db "KKKKKKKKKKKKKKKK"
+        times 3 db "NNNNNNNKNNNNNNNN"
+        db "NNNNNNNNNNNNNNNN"
+        db "KKKKKKKKKKKKKKKK"
+        times 3 db "NNNNKNNNNNNNKNNN"
+        db "NNNNNNNNNNNNNNNN"
+        db "KKKKKKKKKKKKKKKK"
+spr_brick:
+        db "MMMMMMMMMMMMMMMM"
+        times 3 db "OOOOOOOMOOOOOOOM"
+        db "MMMMMMMMMMMMMMMM"
+        times 3 db "MOOOOOOOMOOOOOOO"
+        db "MMMMMMMMMMMMMMMM"
+        times 3 db "OOOOOOOMOOOOOOOM"
+        db "MMMMMMMMMMMMMMMM"
+        times 3 db "MOOOOOOOMOOOOOOO"
+spr_q:
+        db "KKKKKKKKKKKKKKKK"
+        db "KQQQQQQQQQQQQQQK"
+        db "KQQQQQNNNNQQQQQK"
+        db "KQQQQNNQQNNQQQQK"
+        db "KQQQQQQQQNNQQQQK"
+        db "KQQQQQQQNNQQQQQK"
+        db "KQQQQQQNNQQQQQQK"
+        db "KQQQQQQNNQQQQQQK"
+        db "KQQQQQQQQQQQQQQK"
+        db "KQQQQQQNNQQQQQQK"
+        db "KQQQQQQNNQQQQQQK"
+        db "KQQQQQQQQQQQQQQK"
+        db "KQQQQQQQQQQQQQQK"
+        db "KQQQQQQQQQQQQQQK"
+        db "KQQQQQQQQQQQQQQK"
+        db "KKKKKKKKKKKKKKKK"
+spr_empty:
+        db "KKKKKKKKKKKKKKKK"
+        times 14 db "KAAAAAAAAAAAAAAK"
+        db "KKKKKKKKKKKKKKKK"
+spr_ptl:
+        db "KKKKKKKKKKKKKKKK"
+        times 14 db "KPPWPPPPPPPPPPPP"
+        db "KKKKKKKKKKKKKKKK"
+spr_ptr:
+        db "KKKKKKKKKKKKKKKK"
+        times 14 db "PPPPPPPPPPPPPPPK"
+        db "KKKKKKKKKKKKKKKK"
+spr_pbl:
+        times 16 db ".KPPWPPPPPPPPPPP"
+spr_pbr:
+        times 16 db "PPPPPPPPPPPPPPK."
+spr_stair:
+        db "KKKKKKKKKKKKKKKK"
+        times 14 db "KAAAAAAAAAAAAAAK"
+        db "KKKKKKKKKKKKKKKK"
+spr_coin:
+        db "................"
+        db "................"
+        db ".....KKKKKK....."
+        db "....KYYYYYYK...."
+        db "...KYYQQQQYYK..."
+        times 5 db "...KYQQYYQQYK..."
+        db "...KYYQQQQYYK..."
+        db "....KYYYYYYK...."
+        db ".....KKKKKK....."
+        times 3 db "................"
+spr_pole:
+        times 16 db "......KWWK......"
+spr_mstand:
+        db "................"
+        db ".....RRRRR......"
+        db "....RRRRRRRRR..."
+        db "....NNNSSNS....."
+        db "...NSNSSSNSSS..."
+        db "...NSNNSSSNSSS.."
+        db "...NNSSSSNNNN..."
+        db ".....SSSSSSS...."
+        db "....RRBRRRR....."
+        db "...RRRBRRBRRR..."
+        db "..RRRRBBBBRRRR.."
+        db "..SSRBYBBYBRSS.."
+        db "..SSSBBBBBBSSS.."
+        db "..SSBBBBBBBBSS.."
+        db "...BBB....BBB..."
+        db "..NNNN....NNNN.."
+spr_mrun:
+        db "................"
+        db ".....RRRRR......"
+        db "....RRRRRRRRR..."
+        db "....NNNSSNS....."
+        db "...NSNSSSNSSS..."
+        db "...NSNNSSSNSSS.."
+        db "...NNSSSSNNNN..."
+        db ".....SSSSSSS...."
+        db "....RRBRRRR....."
+        db "...RRRBRRBRRR..."
+        db "..RRRRBBBBRRRR.."
+        db "..SSRBYBBYBRS..."
+        db "...SSBBBBBBBS..."
+        db "....BBBBBBBB...."
+        db "...BBBB..BBBB..."
+        db "..NNNN....NNN..."
+spr_mjump:
+        db "................"
+        db ".....RRRRR..SS.."
+        db "....RRRRRRRRRSS."
+        db "....NNNSSNS.SS.."
+        db "...NSNSSSNSSS..."
+        db "...NSNNSSSNSSS.."
+        db "...NNSSSSNNNN..."
+        db ".....SSSSSSS...."
+        db "..RRRRBRRRR....."
+        db ".SSRRRBRRBRRR..."
+        db "SS.RRRBBBBRRRR.."
+        db "S..SRBYBBYBRSS.."
+        db "...SSBBBBBBSSS.."
+        db "..BBBBBBBBBB...."
+        db "..BBB.....BBBB.."
+        db ".NNNN......NNNN."
+spr_goomba:
+        db "................"
+        db "................"
+        db ".....KKKKKK....."
+        db "....KNNNNNNK...."
+        db "...KNNNNNNNNK..."
+        db "..KNNWWNNWWNNK.."
+        db "..KNNWKNNKWNNK.."
+        db "..KNNNNNNNNNNK.."
+        db "...KNNNNNNNNK..."
+        db "....KSSSSSSK...."
+        db "...KSSSSSSSSK..."
+        db "...KSSSSSSSSK..."
+        db "....KKSSSSKK...."
+        db "...KKKK..KKKK..."
+        db "..KKKKK..KKKKK.."
+        db "................"
+spr_flat:
+        times 10 db "................"
+        db "....KKKKKKKK...."
+        db "..KNNNNNNNNNNK.."
+        db ".KNNWKNNNNKWNNK."
+        db ".KNNNNNNNNNNNNK."
+        db "..KKSSSSSSSSKK.."
+        db "...KKKKKKKKKK..."
+spr_koopa:
+        db "................"
+        db ".....KKKK......."
+        db "....KYYYYK......"
+        db "....KYWYYK......"
+        db "....KYYYYYK....."
+        db ".....KYYYK......"
+        db "....KGGGGGK....."
+        db "...KGDGGDGGK...."
+        db "...KGGDGGDGK...."
+        db "...KGDGGDGGK...."
+        db "...KGGDGGDGK...."
+        db "....KGGGGGK....."
+        db "....KYYKYYK....."
+        db "...KYYYKYYYK...."
+        db "...KKKKKKKKK...."
+        db "................"
+spr_shell:
+        times 4 db "................"
+        db ".....KKKKKK....."
+        db "....KGGGGGGK...."
+        db "...KGDGGGGDGK..."
+        db "..KGGDGGGGDGGK.."
+        db "..KGGGDGGDGGGK.."
+        db "..KGDGGDDGGDGK.."
+        db "..KWWWWWWWWWWK.."
+        db "..KWWKWWWWKWWK.."
+        db "...KWWWWWWWWK..."
+        db "....KKKKKKKK...."
+        times 2 db "................"
+spr_mush:
+        db "................"
+        db ".....KKKKKK....."
+        db "....KRRRRRRK...."
+        db "...KRRWWRRRRK..."
+        db "..KRRWWWWRRRRK.."
+        db "..KRRRWWRRRWWK.."
+        db "..KRRRRRRRRWWK.."
+        db "..KWWRRRRRRRRK.."
+        db "...KKKKKKKKKK..."
+        db "....KSSSSSSK...."
+        db "....KSKSSKSK...."
+        db "....KSSSSSSK...."
+        db ".....KSSSSK....."
+        db ".....KKKKKK....."
+        db "................"
+        db "................"
+spr_end:
+; ---- level map: 60 x 12 tiles, one letter per tile (decoded at start) ----
+; . sky  # ground  B brick  ? coin block  M mushroom block  E empty block
+; [ ] pipe top  { } pipe body  S stair  c coin  F flag pole
+map_orig:
+        db "............................................................"   ; row 0
+        db "............................................................"   ; row 1
+        db "..........................................................F."   ; row 2
+        db "..........................................................F."   ; row 3
+        db "..........................................................F."   ; row 4
+        db "..........................................................F."   ; row 5
+        db "..........?M?.BBB...........?......BBMBB................S.F."   ; row 6
+        db "........................ccc.....[].....................SS.F."   ; row 7
+        db "....................[]..........{}..........cc........SSS.F."   ; row 8
+        db "....................{}......ccc.{}................cc.SSSS.S."   ; row 9
+        db "########################...#################..##############"   ; row 10
+        db "########################...#################..##############"   ; row 11

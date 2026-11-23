@@ -144,3 +144,31 @@ mem_fail:
         int 0x21
         mov ax, 0x4C01
         int 0x21
+; ---------------------------------------------------------------------------
+; shutdown: every exit path ends here. Restore timer rate, both vectors,
+; text mode and return to DOS.
+; ---------------------------------------------------------------------------
+shutdown:
+        cli
+        mov al, 0x36             ; timer back to the default 18.2 Hz
+        out 0x43, al
+        xor al, al
+        out 0x40, al
+        out 0x40, al
+        push ds
+        mov dx, [old9]           ; restore keyboard vector
+        mov ds, [old9+2]
+        mov ax, 0x2509
+        int 0x21
+        pop ds
+        push ds
+        mov dx, [old8]           ; restore timer vector
+        mov ds, [old8+2]
+        mov ax, 0x2508
+        int 0x21
+        pop ds
+        sti
+        mov ax, 0x0003           ; back to text mode
+        int 0x10
+        mov ax, 0x4C00           ; terminate program
+        int 0x21

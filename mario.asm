@@ -2265,4 +2265,132 @@ st_over:
         call Flip
 .ret:   popa
         ret
+; ===========================================================================
+; DATA : variables grouped by purpose (hero, enemies, score, clock, keys)
+; ===========================================================================
+
+; ---- system ----
+fbseg:      dw 0                 ; segment of the off-screen frame buffer
+fontseg:    dw 0                 ; BIOS ROM 8x8 font
+fontoff:    dw 0
+old9:       dw 0, 0              ; saved keyboard vector (offset, segment)
+old8:       dw 0, 0              ; saved timer vector
+ticks:      dw 0                 ; incremented by the timer handler
+lasttick:   dw 0
+prevtick:   dw 0
+tickdelta:  dw 1
+ten:        dw 10
+xoff:       dw 2, 8, 13          ; sample columns of the hero hit box
+spr_r:      dw 0                 ; scratch of DrawSprite
+spr_dy:     dw 0
+
+; ---- keys ----
+keys:       times 128 db 0       ; 1 = key is held
+edge:       times 128 db 0       ; 1 = key was freshly pressed
+
+; ---- game state ----
+state:      dw ST_TITLE
+menu_sel:   dw 0
+wphase:     dw 0
+wtimer:     dw 0
+dtimer:     dw 0
+bonus:      dw 0
+
+; ---- hero (8.8 fixed point: whole pixels in a word, fraction in a byte) ----
+mx:         dw 32
+mxf:        db 0
+my:         dw 144
+myf:        db 0
+vx:         dw 0
+vy:         dw 0
+face:       db 0                 ; 0 right, 1 left
+onground:   db 1
+form:       db 0                 ; 0 Small, 1 Super
+hp:         db 1                 ; health 1 or 2
+jlock:      db 0
+flag_hit:   db 0
+hh:         dw 16                ; hero height 16 or 32
+invuln:     dw 0
+chain:      dw 0                 ; stomp chain counter
+old_feet:   dw 0
+flag_row:   dw 0
+
+; ---- score, clock, camera ----
+cam:        dw 0
+time:       dw 300
+clk:        dw 0
+coins:      dw 0
+lives:      dw 3
+score_lo:   dw 0
+score_hi:   dw 0
+
+; ---- tables ----
+solid_tab:  db 0,1,1,1,1,1,1,1,1,1,1,0,0
+chain_tab:  dw 100,200,400,500,800,1000,2000,4000,5000,8000
+flag_tab:   dw 0,0,5000,5000,2000,800,400,400,100,100,100,100
+state_tab:  dw st_title, st_play, st_pause, st_dying, st_life, st_win, st_complete, st_over
+tile_addr:  dw 0, spr_ground, spr_brick, spr_q, spr_q, spr_empty
+            dw spr_ptl, spr_ptr, spr_pbl, spr_pbr, spr_stair, spr_coin, spr_pole
+map_legend: db ".#B?ME[]{}ScF"
+spr_legend: db ".RSNWYGDBQAPKOM"
+spr_cols:   db 0,4,5,6,7,8,9,10,11,12,13,14,15,2,3
+
+; VGA DAC values (0..63) for colours 0..15
+palette:    db  0, 0, 0          ; 0 black (transparent in sprites)
+            db 24,38,63          ; 1 sky
+            db 48,20, 4          ; 2 brick
+            db 18, 8, 2          ; 3 mortar
+            db 58, 8, 6          ; 4 red
+            db 63,46,36          ; 5 skin
+            db 34,20, 6          ; 6 brown
+            db 63,63,63          ; 7 white
+            db 63,58,10          ; 8 yellow
+            db 10,48,10          ; 9 green
+            db  2,26, 6          ; 10 dark green
+            db 12,16,56          ; 11 blue
+            db 60,46, 6          ; 12 gold
+            db 38,38,40          ; 13 gray
+            db  6,50,14          ; 14 pipe green
+            db  3, 3, 3          ; 15 outline
+
+; ---- entity records: type, state, x, y, dir, timer, xfrac, spare ----
+%macro ENT 3
+        dw %1, 0, %2, %3, -1, 0, 0, 0
+%endmacro
+ent_init:
+        ENT 1, 224, 144          ; Goomba
+        ENT 1, 464, 144          ; Goomba
+        ENT 1, 608, 144          ; Goomba
+        ENT 1, 832, 144          ; Goomba
+        ENT 2, 640, 144          ; Koopa Troopa
+        ENT 2, 768, 144          ; Koopa Troopa
+        times 4*8 dw 0           ; four free records for mushrooms
+ents:       times NENT*ENT_SIZE db 0
+ents_end:
+
+; ---- strings ----
+s_memfail:  db "Not enough memory.$"
+s_score:    db "SCORE", 0
+s_coins:    db "COINS x", 0
+s_time:     db "TIME", 0
+s_lives:    db "LIVES x", 0
+s_world:    db "WORLD 1-1", 0
+s_health:   db "HEALTH", 0
+s_title:    db "SUPER MARIO ENGINE", 0
+s_sub:      db "COAL PROJECT", 0
+s_start:    db "START GAME", 0
+s_exit:     db "EXIT", 0
+s_team:     db "TEAM: AYESHA AMJAD & SUMEEKA HAMMAD", 0
+s_ctrl:     db "ARROWS MOVE  SHIFT RUN  SPACE JUMP", 0
+s_ctrl2:    db "P PAUSE  ESC TITLE", 0
+s_paused:   db "PAUSED", 0
+s_x:        db "x", 0
+s_complete: db "LEVEL COMPLETE", 0
+s_left:     db "TIME LEFT", 0
+s_bonus:    db "BONUS", 0
+s_enter:    db "PRESS ENTER FOR TITLE", 0
+s_over:     db "GAME OVER", 0
+s_final:    db "FINAL SCORE", 0
+
+map_work:   times MAPW*MAPH db 0 ; working copy of the map (changes in play)
 

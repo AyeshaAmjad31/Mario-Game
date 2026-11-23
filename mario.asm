@@ -1558,4 +1558,57 @@ DrawEnts:
         jb  .l
         popa
         ret
+; ===========================================================================
+; MODULES 13, 14, 15 : HUD, state machine, screens, win / lose / restart
+; ===========================================================================
+POLEX       equ 928              ; world x of the flag pole column (58*16)
+
+; ResetLevel : map, enemies, mushrooms, clock, camera and hero back to start.
+; Uses block moves (REP MOVSB / REP MOVSW) to copy the untouched originals.
+ResetLevel:
+        pusha
+        push es
+        mov ax, ds
+        mov es, ax
+        cld
+        mov si, map_orig
+        mov di, map_work
+        mov cx, MAPW*MAPH
+        rep movsb
+        mov si, ent_init
+        mov di, ents
+        mov cx, NENT*ENT_SIZE/2
+        rep movsw
+        mov word [mx], 32        ; Mario starts at world x = 32, on row 9
+        mov word [my], 144
+        mov byte [mxf], 0
+        mov byte [myf], 0
+        mov word [vx], 0
+        mov word [vy], 0
+        mov byte [face], 0
+        mov byte [onground], 1
+        mov byte [form], 0       ; always Small Mario after a death
+        mov byte [hp], 1
+        mov word [hh], 16
+        mov word [invuln], 0
+        mov word [chain], 0
+        mov byte [jlock], 1
+        mov byte [flag_hit], 0
+        mov word [cam], 0
+        mov word [time], 300
+        mov word [clk], 0
+        mov word [wphase], 0
+        pop es
+        popa
+        ret
+
+; NewGame : score, coins and lives too
+NewGame:
+        mov word [score_lo], 0
+        mov word [score_hi], 0
+        mov word [coins], 0
+        mov word [lives], 3
+        call ResetLevel
+        ret
+
 
